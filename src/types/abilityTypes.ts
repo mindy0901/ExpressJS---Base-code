@@ -14,3 +14,9 @@ export enum Action {
     Update = "update",
     Delete = "delete",
 }
+
+export enum Subject {
+    All = "all",
+    User = "user",
+    Product = "product",
+}

@@ -2,25 +2,14 @@ import dotenv from "dotenv";
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload, Secret } from "jsonwebtoken";
 import { Role } from "@prisma/client";
+import { DecodedUser } from "jwtTypes";
 
 dotenv.config();
 
 type AuthHeader = string | string[] | undefined;
 
-interface DecodedUser {
-    id: string;
-    role: Role;
-}
-
-export interface RequestUser extends Request {
-    user: DecodedUser;
-    userId: string;
-    userRole: Role;
-}
-
-const verifyJWT = (req: RequestUser, res: Response, next: NextFunction) => {
+const verifyJWT = (req: Request, res: Response, next: NextFunction) => {
     const authHeader: AuthHeader = req.headers.Authorization;
-
     if (!authHeader || Array.isArray(authHeader)) {
         return res.status(403).json({ message: "Authorization error" });
     }

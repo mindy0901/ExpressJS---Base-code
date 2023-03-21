@@ -1,12 +1,12 @@
 import { AbilityBuilder, createMongoAbility } from "@casl/ability";
-import { Action,  UserRequest } from "abilityTypes";
+import { Action, Subject } from "../types/abilityTypes";
 
-const defineAbilitiesFor = (user: UserRequest) => {
+const defineAbilitiesFor = (userRole: string) => {
     const { can, cannot, build } = new AbilityBuilder(createMongoAbility);
-    if (user.role === "ADMIN" || user.role === "DIRECTOR") {
-        can(Action.Manage, "all");
+    if (userRole === "ADMIN" || userRole === "DIRECTOR") {
+        can(Action.Manage, Subject.All);
     } else {
-        can(Action.Read, "post");
+        cannot(Action.Read, Subject.User);
     }
 
     return build();
