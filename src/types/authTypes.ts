@@ -1,7 +1,7 @@
 import { Role } from "@prisma/client";
 
 export interface UserRequest {
-    id: String;
+    id: number;
     role: Role;
 }
 
@@ -10,7 +10,7 @@ export enum Action {
     Create = "create",
     Read = "read",
     ReadAll = "readAll",
-    ReadPublicOnly = "readPublicOnly",
+    ReadAllPublic = "readAllPublic",
     Update = "update",
     Delete = "delete",
 }

@@ -1,11 +1,17 @@
 import express from "express";
 const router = express.Router();
-import { authenticateRefreshToken } from "../middlewares";
-import { refreshToken } from "../controllers/auth";
 
-// router.post("/signup", signup);
-// router.post("/signin", signin);
-// router.get("/signout", verifyJWT, signout);
-router.post("/refresh", authenticateRefreshToken, refreshToken);
+import { verifyJWT } from "../middlewares";
+import { refreshToken, signin, signout, signup } from "../controllers/auth";
+import { refreshValidator, signinValidator, signupValidator } from "../middlewares/authValidator";
 
-module.exports = router;
+router.post("/signup", signupValidator(), signup);
+
+router.post("/signin", signinValidator(), signin);
+
+router.post("/refresh", refreshValidator(), refreshToken);
+
+router.use(verifyJWT);
+router.get("/signout", signout);
+
+export default router;

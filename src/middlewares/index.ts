@@ -1,7 +1,5 @@
 import credentials from "./credentials";
-import verifyRoles from "./verifyRoles";
 import verifyJWT from "./verifyJWT";
-import defineAbilitiesFor from "./ability";
-import authenticateRefreshToken from "./refreshToken";
+import verifyAbilities from "./verifyAbilities";
 
-export { credentials, verifyRoles, verifyJWT, defineAbilitiesFor, authenticateRefreshToken };
+export { credentials, verifyJWT, verifyAbilities };

@@ -4,15 +4,17 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import CryptoJS from "crypto-js";
 import jwt, { JwtPayload, Secret } from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, User } from "@prisma/client";
+import { validationResult } from "express-validator/src/validation-result";
 const prisma = new PrismaClient();
 // const { validationResult } = require("express-validator");
 
 const signup = async (req: Request, res: Response) => {
     // 1 validate signup request
-    // const errors = validationResult(req);
+    const errors = validationResult(req);
 
-    // if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    console.log(req.body.email);
 
     // 2 check for duplicate username or email in the database
     const { username, password, email, role } = req.body;
@@ -51,9 +53,9 @@ const signup = async (req: Request, res: Response) => {
 
 const signin = async (req: Request, res: Response) => {
     // 1 validate signin request
-    // const errors = validationResult(req);
+    const errors = validationResult(req);
 
-    // if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     // 2 find user in database
     const { username, password } = req.body;
@@ -77,15 +79,16 @@ const signin = async (req: Request, res: Response) => {
         expiresIn: "24h",
     });
 
+    const encryptedRefreshToken = CryptoJS.AES.encrypt(refresh_token, process.env.CRYPTO_KEY as string).toString();
+
     // 5 pass access_token to
     res.header("Authorization", `Bearer ${access_token}`);
+    res.header("Refresh-token", encryptedRefreshToken);
     res.header("Access-Control-Expose-Headers", "Authorization");
-
-    const encryptedRefreshToken = CryptoJS.AES.encrypt(refresh_token, process.env.CRYPTO_KEY as string).toString();
 
     await prisma.user.update({
         where: { username: username },
-        data: { refresh_token: encryptedRefreshToken },
+        data: { refresh_token: refresh_token },
     });
 
     return res.status(200).json({ message: `Hello ${username}` });
@@ -95,36 +98,37 @@ const signout = async (req: Request, res: Response) => {
     if (!req.userId) return res.status(500).json({ message: `User not found` });
 
     try {
-        await prisma.user.update({
+        const user: User = await prisma.user.update({
             where: { id: req.userId },
             data: { refresh_token: "" },
         });
 
         res.header("Authorization", "");
-        res.header("Access-Control-Expose-Headers", "Authorization");
 
-        return res.status(200).json({ message: "Signout successful" });
+        return res.status(200).json({ message: `User ${user.username} signout successful` });
     } catch (error: unknown) {
         return res.status(200).json({ message: "Signout failed", error: error });
     }
 };
 
 const refreshToken = async (req: Request, res: Response) => {
-    const x = req.user;
-
-    // 1 get refresh token from request
+    // 1. Extract refresh token from request
     const refreshToken = req?.body?.refresh_token;
 
-    if (!refreshToken) res.status(403).json({ message: "Refresh token not found" });
+    if (!refreshToken) {
+        return res.status(401).json({ message: "Refresh token not found" });
+    }
 
-    // 2 decrypt refresh token
+    // 2. Decrypt refresh token
     const bytes = CryptoJS.AES.decrypt(refreshToken, process.env.CRYPTO_KEY as string);
 
     const decryptedRefreshToken = bytes?.toString(CryptoJS.enc.Utf8);
 
-    if (!decryptedRefreshToken) res.status(403).json({ message: "Refresh token decryption failed" });
+    if (!decryptedRefreshToken) {
+        return res.status(401).json({ message: "Refresh token decryption failed" });
+    }
 
-    // 3 verify refresh token expired time, get user info
+    // 3. Verify refresh token and extract user id
     let userId;
     try {
         const decoded: string | JwtPayload = jwt.verify(
@@ -135,17 +139,22 @@ const refreshToken = async (req: Request, res: Response) => {
 
         userId = decodedToken.id;
     } catch (error: unknown) {
-        return res.status(403).json({ message: "Refresh token verification failed", error: error });
+        return res.status(401).json({ message: "Refresh token verification failed", error: error });
     }
 
-    // 4 find user in database by user info
-    const user = await prisma.user.findUnique({
+    // 4. Find user in database by user id
+    const user: User | null = await prisma.user.findUnique({
         where: { id: userId },
     });
 
-    if (!user) res.status(403).json({ message: "User not found, refresh token failed" });
+    if (!user) {
+        return res.status(401).json({ message: "User not found, refresh token failed" });
+    }
 
-    if (user?.refresh_token !== refreshToken) res.status(403).json({ message: "Refresh token does not match" });
+    // 5. Check if refresh token matches the one stored in database
+    if (user.refresh_token !== refreshToken) {
+        return res.status(401).json({ message: "Refresh token does not match" });
+    }
 
     // 5 create new access & refresh token
     const access_token = jwt.sign({ id: user?.id, role: user?.role }, process.env.ACCESS_TOKEN_SECRET as Secret, {
@@ -155,18 +164,23 @@ const refreshToken = async (req: Request, res: Response) => {
     const refresh_token = jwt.sign({ id: user?.id }, process.env.REFRESH_TOKEN_SECRET as Secret, { expiresIn: "24h" });
 
     // 6 encrypt refresh token and update user in database
-    const encryptedRefreshToken = CryptoJS.AES.encrypt(refresh_token, process.env.CRYPTO_KEY as string).toString();
+    try {
+        const encryptedRefreshToken = CryptoJS.AES.encrypt(refresh_token, process.env.CRYPTO_KEY as string).toString();
 
-    await prisma.user.update({
-        where: { id: user?.id },
-        data: { refresh_token: encryptedRefreshToken },
-    });
+        await prisma.user.update({
+            where: { id: user?.id },
+            data: { refresh_token: encryptedRefreshToken },
+        });
+    } catch (error: unknown) {
+        console.log(error);
+        return res.status(401).json({ message: "Update user refresh token failed" });
+    }
 
     // 7 replace access token at response headers
     res.header("Authorization", `Bearer ${access_token}`);
     res.header("Access-Control-Expose-Headers", "Authorization");
 
-    res.status(200).json(encryptedRefreshToken);
+    return res.status(200).json(access_token);
 };
 
 export { signup, signin, signout, refreshToken };
